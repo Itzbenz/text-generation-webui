@@ -4,6 +4,8 @@ import time
 
 import numpy as np
 import torch
+import torch_directml
+
 import transformers
 from tqdm import tqdm
 
@@ -33,6 +35,8 @@ def encode(prompt, tokens_to_generate=0, add_special_tokens=True):
             return input_ids.numpy()
         elif shared.args.deepspeed:
             return input_ids.to(device=local_rank)
+        elif shared.args.directml_device:
+            return input_ids.to(torch_directml.device(shared.args.directml_device))
         else:
             return input_ids.cuda()
 
@@ -113,7 +117,7 @@ def generate_reply(question, max_new_tokens, do_sample, temperature, top_p, typi
         print(f"\n\n{question}\n--------------------\n")
 
     input_ids = encode(question, max_new_tokens)
-    cuda = "" if (shared.args.cpu or shared.args.deepspeed or shared.args.flexgen) else ".cuda()"
+    cuda = "" if (shared.args.cpu or shared.args.deepspeed or shared.args.flexgen or shared.args.directml_device) else ".cuda()"
     n = shared.tokenizer.eos_token_id if eos_token is None else int(encode(eos_token)[0][-1])
     if stopping_string is not None:
         # The stopping_criteria code below was copied from

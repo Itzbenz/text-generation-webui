@@ -6,6 +6,8 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import torch_directml
+
 import transformers
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -44,8 +46,40 @@ def load_model(model_name):
     if not (shared.args.cpu or shared.args.load_in_8bit or shared.args.auto_devices or shared.args.disk or shared.args.gpu_memory is not None or shared.args.cpu_memory is not None or shared.args.deepspeed or shared.args.flexgen or shared.is_RWKV):
         if any(size in shared.model_name.lower() for size in ('13b', '20b', '30b')):
             model = AutoModelForCausalLM.from_pretrained(Path(f"models/{shared.model_name}"), device_map='auto', load_in_8bit=True)
-        else:
+        elif torch.cuda.is_available() and not shared.args.directml_device:
             model = AutoModelForCausalLM.from_pretrained(Path(f"models/{shared.model_name}"), low_cpu_mem_usage=True, torch_dtype=torch.bfloat16 if shared.args.bf16 else torch.float16).cuda()
+        else:
+            model = AutoModelForCausalLM.from_pretrained(Path(f"models/{shared.model_name}"), low_cpu_mem_usage=True, torch_dtype=torch.float16)
+            #directml ?
+            if torch_directml.is_available():
+                # check torch version
+                if torch.__version__ < '1.13.2':
+                    # https://github.com/microsoft/DirectML/issues/400
+                    print("DirectML with transformers requires torch 1.13.2 or higher")
+
+                # did user specify a device?
+                if shared.args.directml_device is not None:
+                    # yes, use it
+                    device = shared.args.directml_device
+                else:
+                    # no, use the default device
+                    device = torch_directml.default_device()
+                #check if int
+                if isinstance(device, int):
+                    # log the device name
+                    name = torch_directml.device_name(device)
+                    print(f"Using DirectML device: {name}")
+                    # save the device name for later
+                    shared.args.directml_device = device
+                    # yes, convert to torch device
+                    device = torch_directml.device(device)
+                else:
+                    raise ValueError("Expected an integer device ID got: " + str(device))              
+                # set the device
+                model = model.to(device=device)
+                
+                
+                
 
     # FlexGen
     elif shared.args.flexgen:
