@@ -36,6 +36,16 @@ if shared.args.deepspeed:
     ds_config = generate_ds_config(shared.args.bf16, 1 * world_size, shared.args.nvme_offload_dir)
     dschf = HfDeepSpeedConfig(ds_config) # Keep this object alive for the Transformers integration
 
+_multinominal = torch.multinomial
+def multinomial(self, *args, **kwargs):
+    if self.dtype == torch.float16:
+        return _multinominal(self.float(), *args, **kwargs)
+    else:
+        return _multinominal(self, *args, **kwargs)
+
+if not torch.cuda.is_available() or shared.args.directml_device:
+    torch.multinomial = multinomial
+
 def load_model(model_name):
     print(f"Loading {model_name}...")
     t0 = time.time()
